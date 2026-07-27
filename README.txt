@@ -1,9 +1,6 @@
 MODERN SPELLBOOK REBUILT
 Version 2.2.0-CoA
 
-This is a from-scratch replacement for the previous ModernSpellBook builds.
-It does not load or reuse the previous addon logic, polish layer, side-navigation
-code, lifecycle patches, icon repair code, or custom art assets.
 
 FEATURES
 - Fresh spell collection using GetNumSpellTabs and GetSpellTabInfo
