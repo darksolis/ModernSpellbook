@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: Modern Spellbook |cff55aaffRebuilt|r
+## Notes: A from-scratch spellbook replacement for Ascension CoA with reliable slot-based icons, search, passives, ranks, pet spells, and large page controls.
+## Version: 2.2.0-CoA
+## DefaultState: enabled
+## SavedVariablesPerCharacter: ModernSpellBookRebuiltDB
+
+Core.lua
