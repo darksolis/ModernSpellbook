@@ -1,5 +1,5 @@
-MODERN SPELLBOOK
-Version 2.3.2-CoA
+MODERN SPELLBOOK REBUILT
+Version 2.3.3-CoA-DarkSolis
 
 This is a from-scratch replacement for the previous ModernSpellBook builds.
 It does not load or reuse the previous addon logic, polish layer, side-navigation
@@ -69,3 +69,10 @@ V2.3.2 SHELL FIX
 - Native visuals restore when closing or switching to Professions.
 - No protected native Hide calls are used during combat.
 - Added a dedicated close button to the rebuilt frame.
+
+
+VERSION 2.3.3
+- Updated in-game branding to Modern Spellbook Built by DarkSolis.
+- Added movement-threshold drag detection as a fallback to OnDragStart.
+- PickupSpell and PickupPetSpell are attempted during combat without addon-side blocking.
+- Prevents a completed drag from also casting the spell on mouse release.
