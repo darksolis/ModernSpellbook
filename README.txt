@@ -1,6 +1,9 @@
 MODERN SPELLBOOK REBUILT
-Version 2.2.0-CoA
+Version 2.3.2-CoA-StandaloneShell
 
+This is a from-scratch replacement for the previous ModernSpellBook builds.
+It does not load or reuse the previous addon logic, polish layer, side-navigation
+code, lifecycle patches, icon repair code, or custom art assets.
 
 FEATURES
 - Fresh spell collection using GetNumSpellTabs and GetSpellTabInfo
@@ -45,3 +48,24 @@ CATEGORY ORGANIZATION
 - Every displayed page contains spells from one category only.
 - Categories follow talent-tree order first, then remaining spellbook categories.
 - Large page controls move between category pages without mixing unrelated abilities.
+
+
+COMBAT-SAFE REWORK
+- Spell cards are now ordinary addon buttons, not SecureActionButtonTemplate frames.
+- Pages, categories, search, and visibility may update during combat.
+- Spells cast from the player's real left-click using CastSpell(slot, bookType).
+- Native Ascension protected frames are never hidden, shown, resized, or mouse-toggled during combat lockdown.
+- Deferred native state is applied automatically after PLAYER_REGEN_ENABLED.
+
+
+2.3.1 COMBAT DRAG UPDATE
+- Removed the addon-side combat check that prevented PickupSpell/PickupPetSpell from starting while fighting.
+- The WoW client may still block dropping or replacing an action-bar slot during combat because action bars are protected secure frames.
+
+
+V2.3.2 SHELL FIX
+- Rebuilt frame now lives on UIParent rather than inside the Ascension shell.
+- Native spellbook becomes transparent while the rebuilt view is active.
+- Native visuals restore when closing or switching to Professions.
+- No protected native Hide calls are used during combat.
+- Added a dedicated close button to the rebuilt frame.

@@ -2,7 +2,7 @@
 -- Fresh implementation for WoW 3.3.5a / Ascension CoA.
 
 local ADDON_NAME = "ModernSpellBook"
-local VERSION = "2.2.0-CoA"
+local VERSION = "2.3.2-CoA-StandaloneShell"
 local BOOK_SPELL = BOOKTYPE_SPELL or "spell"
 local BOOK_PET = BOOKTYPE_PET or "pet"
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -77,11 +77,11 @@ local function SpellLink(info)
     return info.name
 end
 
-local Frame = CreateFrame("Frame", "ModernSpellBookRebuiltFrame", ParentBook)
+local Frame = CreateFrame("Frame", "ModernSpellBookRebuiltFrame", UIParent)
 Frame:SetFrameStrata("HIGH")
 Frame:SetFrameLevel((ParentBook:GetFrameLevel() or 1) + 20)
+Frame:SetSize(940, 610)
 Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
-Frame:SetPoint("BOTTOMRIGHT", ParentBook, "BOTTOMRIGHT", -42, 46)
 Frame:EnableMouse(true)
 SetBackdrop(Frame, 0.985, 0.95, 16)
 Frame:Hide()
@@ -94,6 +94,8 @@ Frame.cards = {}
 Frame.pendingRefresh = nil
 Frame.refreshToken = 0
 Frame.mode = DB.mode
+Frame.nativeAlpha = nil
+Frame.nativeMouseEnabled = nil
 
 local header = CreateSolid(Frame, "BACKGROUND", 0, 0.035, 0.04, 0.065, 1)
 header:SetPoint("TOPLEFT", Frame, "TOPLEFT", 5, -5)
@@ -258,6 +260,21 @@ pageText:SetPoint("BOTTOM", Frame, "BOTTOM", 0, 31)
 pageText:SetText("Page 1 of 1")
 pageText:SetTextColor(0.94, 0.96, 1)
 
+local closeButton = CreateFrame("Button", nil, Frame)
+closeButton:SetSize(30, 30)
+closeButton:SetPoint("TOPRIGHT", Frame, "TOPRIGHT", -10, -10)
+closeButton:SetText("X")
+closeButton:SetNormalFontObject("GameFontNormalLarge")
+StyleButton(closeButton)
+closeButton:SetFrameLevel(Frame:GetFrameLevel() + 10)
+closeButton:SetScript("OnClick", function()
+    if HideUIPanel then
+        HideUIPanel(ParentBook)
+    else
+        ParentBook:Hide()
+    end
+end)
+
 local function UpdateModeAppearance()
     local isPlayer = Frame.mode == "player"
     playerMode:SetBackdropBorderColor(isPlayer and accentR or 0.18, isPlayer and accentG or 0.23, isPlayer and accentB or 0.31, 1)
@@ -281,7 +298,7 @@ petMode:SetScript("OnClick", function()
 end)
 
 local function CreateCard(index)
-    local card = CreateFrame("Button", nil, grid, "SecureActionButtonTemplate")
+    local card = CreateFrame("Button", nil, grid)
     card:SetSize(232, 62)
     card:RegisterForClicks("AnyUp")
     card:RegisterForDrag("LeftButton")
@@ -354,9 +371,22 @@ local function CreateCard(index)
         end
     end)
 
+    -- Ordinary buttons remain safe to show, hide, and recycle during combat.
+    -- Casting is invoked only from the player's hardware click.
+    card:SetScript("OnClick", function(self, button)
+        local info = self.info
+        if not info or info.passive or button ~= "LeftButton" then return end
+        if IsModifiedClick and IsModifiedClick("CHATLINK") then return end
+        if info.slot and CastSpell then
+            CastSpell(info.slot, info.bookType)
+        elseif info.castName and CastSpellByName then
+            CastSpellByName(info.castName)
+        end
+    end)
+
     card:SetScript("OnDragStart", function(self)
         local info = self.info
-        if not info or info.passive or InCombatLockdown() then return end
+        if not info or info.passive then return end
         if info.bookType == BOOK_PET and PickupPetSpell then
             PickupPetSpell(info.slot)
         elseif PickupSpell then
@@ -384,8 +414,6 @@ local function HideCards()
     for _, card in ipairs(Frame.cards) do
         card:Hide()
         card.info = nil
-        card:SetAttribute("type1", nil)
-        card:SetAttribute("spell", nil)
         if card.cooldown then card.cooldown:Hide() end
     end
 end
@@ -660,17 +688,6 @@ function Frame:PopulateCards()
         if info.passive then card.cooldown:Hide() else card.cooldown:Show() end
         card.cooldownElapsed = 0.2
 
-        card:SetAttribute("type1", nil)
-        card:SetAttribute("spell", nil)
-        card:SetAttribute("action", nil)
-        if not info.passive and info.bookType == BOOK_SPELL then
-            card:SetAttribute("type1", "spell")
-            card:SetAttribute("spell", info.castName or info.name)
-        elseif not info.passive and info.bookType == BOOK_PET then
-            card:SetAttribute("type1", "pet")
-            card:SetAttribute("action", info.castName or info.name)
-        end
-
         card:Show()
     end
 
@@ -698,11 +715,6 @@ function Frame:PopulateCards()
 end
 
 function Frame:Refresh()
-    if InCombatLockdown and InCombatLockdown() then
-        self.pendingRefresh = true
-        return
-    end
-
     local raw
     if self.mode == "pet" then
         raw = CollectPetSpells()
@@ -767,42 +779,53 @@ local function IsSpellContentActive()
     return not name or name == "AscensionSpellbookFrameContentSpells"
 end
 
-local function NativeSpellContent(show)
-    if AscensionSpellbookFrameContentSpells then
-        if show then
-            AscensionSpellbookFrameContentSpells:Show()
-            AscensionSpellbookFrameContentSpells:EnableMouse(true)
-        else
-            AscensionSpellbookFrameContentSpells:EnableMouse(false)
-            AscensionSpellbookFrameContentSpells:Hide()
+local function SetNativeShellVisible(show)
+    -- The rebuilt book is parented to UIParent, so the Ascension shell can be
+    -- made transparent without affecting the custom display. SetAlpha is not a
+    -- protected visibility operation and is safe during combat.
+    if show then
+        ParentBook:SetAlpha(Frame.nativeAlpha or 1)
+        Frame.nativeAlpha = nil
+        if Frame.nativeMouseEnabled ~= nil and ParentBook.EnableMouse then
+            ParentBook:EnableMouse(Frame.nativeMouseEnabled)
         end
-    end
-
-    for i = 1, 12 do
-        local button = _G["SpellButton" .. i]
-        if button then
-            if show then button:Show() else button:Hide() end
-        end
+        Frame.nativeMouseEnabled = nil
+    else
+        if Frame.nativeAlpha == nil then Frame.nativeAlpha = ParentBook:GetAlpha() end
+        ParentBook:SetAlpha(0)
+        -- Do not alter protected child visibility. The custom frame sits at a
+        -- higher strata and receives interaction inside the rebuilt book.
     end
 end
 
-local originalWidth
-local originalHeight
+local function RestoreNativeSpellContent()
+    if InCombatLockdown and InCombatLockdown() then
+        Frame.pendingNativeRestore = true
+        return
+    end
+    Frame.pendingNativeRestore = nil
+    if AscensionSpellbookFrameContentSpells then
+        AscensionSpellbookFrameContentSpells:Show()
+        AscensionSpellbookFrameContentSpells:EnableMouse(true)
+    end
+    for i = 1, 12 do
+        local button = _G["SpellButton" .. i]
+        if button then button:Show() end
+    end
+end
+
 local function Activate()
     if not ParentBook:IsShown() then return end
     if not IsSpellContentActive() then
         Frame:Hide()
-        NativeSpellContent(true)
-        if originalWidth then ParentBook:SetWidth(originalWidth) end
-        if originalHeight then ParentBook:SetHeight(originalHeight) end
+        SetNativeShellVisible(true)
+        RestoreNativeSpellContent()
         return
     end
 
-    originalWidth = originalWidth or ParentBook:GetWidth()
-    originalHeight = originalHeight or ParentBook:GetHeight()
-    ParentBook:SetWidth(math.max(originalWidth or 500, 980))
-    ParentBook:SetHeight(math.max(originalHeight or 600, 720))
-    NativeSpellContent(false)
+    SetNativeShellVisible(false)
+    Frame:ClearAllPoints()
+    Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
     Frame:Show()
     UpdateModeAppearance()
     Frame:ScheduleRefresh(0.05, false)
@@ -811,9 +834,8 @@ end
 local function Deactivate()
     Frame:Hide()
     HideCards()
-    NativeSpellContent(true)
-    if originalWidth then ParentBook:SetWidth(originalWidth) end
-    if originalHeight then ParentBook:SetHeight(originalHeight) end
+    SetNativeShellVisible(true)
+    RestoreNativeSpellContent()
 end
 
 ParentBook:HookScript("OnShow", function()
@@ -842,7 +864,12 @@ events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("PLAYER_TALENT_UPDATE")
 events:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_PET" and unit ~= "player" then return end
-    if event == "PLAYER_REGEN_ENABLED" and not Frame.pendingRefresh then return end
+
+    if event == "PLAYER_REGEN_ENABLED" then
+        if Frame.pendingNativeRestore then RestoreNativeSpellContent() end
+        if ParentBook:IsShown() then Activate() end
+    end
+
     if Frame:IsShown() then Frame:ScheduleRefresh(0.10, false) end
 end)
 
