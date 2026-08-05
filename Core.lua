@@ -2,7 +2,7 @@
 -- Fresh implementation for WoW 3.3.5a / Ascension CoA.
 
 local ADDON_NAME = "ModernSpellBook"
-local VERSION = "2.3.3-CoA-DarkSolis"
+local VERSION = "2.3.4-CoA-DarkSolis"
 local BOOK_SPELL = BOOKTYPE_SPELL or "spell"
 local BOOK_PET = BOOKTYPE_PET or "pet"
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -111,7 +111,7 @@ local title = Frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("LEFT", header, "LEFT", 18, 0)
 title:SetPoint("RIGHT", header, "RIGHT", -18, 0)
 title:SetJustifyH("LEFT")
-title:SetText("Modern Spellbook Built by DarkSolis - Version 2.3.3")
+title:SetText("Modern Spellbook Built by DarkSolis - Version 2.3.4")
 title:SetTextColor(0.97, 0.98, 1)
 
 local function StyleButton(button)
@@ -359,73 +359,61 @@ local function CreateCard(index)
         GameTooltip:Hide()
     end)
 
+    local function RestoreCardIcon(self)
+        local info = self.info
+        if not info or not self.icon then return end
+        self.icon:SetTexture(info.icon or QUESTION_MARK)
+        self.icon:Show()
+    end
+
     local function PickupCardSpell(self)
         local info = self.info
         if not info or info.passive or not info.slot then return false end
+
+        local pickedUp = false
         if info.bookType == BOOK_PET and PickupPetSpell then
             PickupPetSpell(info.slot)
-            return true
+            pickedUp = true
         elseif PickupSpell then
-            PickupSpell(info.slot, BOOK_SPELL)
-            return true
+            PickupSpell(info.slot, info.bookType or BOOK_SPELL)
+            pickedUp = true
         end
-        return false
+
+        if pickedUp then
+            Frame.dragInProgress = true
+            Frame.dragCard = self
+            RestoreCardIcon(self)
+            self.restoreIconDelay = 0.05
+        end
+        return pickedUp
     end
 
     card:SetScript("OnMouseDown", function(self, button)
         local info = self.info
         if not info then return end
         self.dragStarted = false
-        self.mouseDown = button == "LeftButton"
-        if self.mouseDown and GetCursorPosition then
-            self.dragStartX, self.dragStartY = GetCursorPosition()
-        end
         if IsModifiedClick and IsModifiedClick("CHATLINK") then
             local link = SpellLink(info)
             if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
         end
     end)
 
-    card:SetScript("OnMouseUp", function(self)
-        self.mouseDown = false
-        self.dragStartX = nil
-        self.dragStartY = nil
-    end)
-
-    -- Ordinary buttons remain safe to show, hide, and recycle during combat.
-    -- Casting is invoked only from the player's hardware click.
-    card:SetScript("OnClick", function(self, button)
-        local info = self.info
-        if not info or info.passive or button ~= "LeftButton" then return end
-        if self.dragStarted then
-            self.dragStarted = false
-            return
-        end
-        if IsModifiedClick and IsModifiedClick("CHATLINK") then return end
-        if info.slot and CastSpell then
-            CastSpell(info.slot, info.bookType)
-        elseif info.castName and CastSpellByName then
-            CastSpellByName(info.castName)
-        end
-    end)
+    -- Cards are intentionally drag-only. Calling CastSpell or CastSpellByName
+    -- from an ordinary addon button taints the secure cast path on Ascension.
+    card:SetScript("OnClick", function() end)
 
     card:SetScript("OnDragStart", function(self)
         if PickupCardSpell(self) then
             self.dragStarted = true
-            self.mouseDown = false
         end
     end)
 
     card:SetScript("OnUpdate", function(self, elapsed)
-        if self.mouseDown and not self.dragStarted and self.info and not self.info.passive and GetCursorPosition then
-            local x, y = GetCursorPosition()
-            local dx = x - (self.dragStartX or x)
-            local dy = y - (self.dragStartY or y)
-            if (dx * dx + dy * dy) >= 36 then
-                if PickupCardSpell(self) then
-                    self.dragStarted = true
-                    self.mouseDown = false
-                end
+        if self.restoreIconDelay then
+            self.restoreIconDelay = self.restoreIconDelay - elapsed
+            if self.restoreIconDelay <= 0 then
+                self.restoreIconDelay = nil
+                RestoreCardIcon(self)
             end
         end
 
@@ -445,6 +433,7 @@ local function CreateCard(index)
 end
 
 local function HideCards()
+    if Frame.dragInProgress then return end
     for _, card in ipairs(Frame.cards) do
         card:Hide()
         card.info = nil
@@ -749,6 +738,12 @@ function Frame:PopulateCards()
 end
 
 function Frame:Refresh()
+    local cursorType = GetCursorInfo and GetCursorInfo()
+    if Frame.dragInProgress or cursorType == "spell" or cursorType == "petaction" then
+        self:ScheduleRefresh(0.15, false)
+        return
+    end
+
     local raw
     if self.mode == "pet" then
         raw = CollectPetSpells()
@@ -896,8 +891,22 @@ events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("UNIT_PET")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("PLAYER_TALENT_UPDATE")
+events:RegisterEvent("CURSOR_UPDATE")
 events:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_PET" and unit ~= "player" then return end
+
+    if event == "CURSOR_UPDATE" then
+        local cursorType = GetCursorInfo and GetCursorInfo()
+        if cursorType ~= "spell" and cursorType ~= "petaction" then
+            Frame.dragInProgress = nil
+            Frame.dragCard = nil
+            if Frame:IsShown() then Frame:ScheduleRefresh(0.05, false) end
+        elseif Frame.dragCard and Frame.dragCard.info then
+            Frame.dragCard.icon:SetTexture(Frame.dragCard.info.icon or QUESTION_MARK)
+            Frame.dragCard.icon:Show()
+        end
+        return
+    end
 
     if event == "PLAYER_REGEN_ENABLED" then
         if Frame.pendingNativeRestore then RestoreNativeSpellContent() end

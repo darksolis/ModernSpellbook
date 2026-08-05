@@ -1,5 +1,5 @@
 MODERN SPELLBOOK REBUILT
-Version 2.3.3-CoA-DarkSolis
+Version 2.3.4-CoA-DarkSolis
 
 This is a from-scratch replacement for the previous ModernSpellBook builds.
 It does not load or reuse the previous addon logic, polish layer, side-navigation
@@ -71,8 +71,15 @@ V2.3.2 SHELL FIX
 - Added a dedicated close button to the rebuilt frame.
 
 
-VERSION 2.3.3
+VERSION 2.3.4
 - Updated in-game branding to Modern Spellbook Built by DarkSolis.
 - Added movement-threshold drag detection as a fallback to OnDragStart.
 - PickupSpell and PickupPetSpell are attempted during combat without addon-side blocking.
 - Prevents a completed drag from also casting the spell on mouse release.
+
+
+2.3.4 FIXES
+- Removed all CastSpell/CastSpellByName calls to eliminate secure-cast taint.
+- Spell cards are drag-only.
+- Keeps source icons visible while a spell is on the cursor.
+- Defers redraws while dragging so cards are not recycled mid-drag.
