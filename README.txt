@@ -1,5 +1,5 @@
-MODERN SPELLBOOK REBUILT
-Version 2.3.2-CoA-StandaloneShell
+MODERN SPELLBOOK
+Version 2.3.2-CoA
 
 This is a from-scratch replacement for the previous ModernSpellBook builds.
 It does not load or reuse the previous addon logic, polish layer, side-navigation
