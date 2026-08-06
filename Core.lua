@@ -2,7 +2,7 @@
 -- Fresh implementation for WoW 3.3.5a / Ascension CoA.
 
 local ADDON_NAME = "ModernSpellBook"
-local VERSION = "2.4.4-CoA-DarkSolis-SecurePages"
+local VERSION = "2.4.6-CoA-DarkSolis-SecurePages"
 local BOOK_SPELL = BOOKTYPE_SPELL or "spell"
 local BOOK_PET = BOOKTYPE_PET or "pet"
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -77,14 +77,20 @@ local function SpellLink(info)
     return info.name
 end
 
-local Frame = CreateFrame("Frame", "ModernSpellBookRebuiltFrame", ParentBook)
+local Frame = CreateFrame("Frame", "ModernSpellBookRebuiltFrame", UIParent)
 Frame:SetFrameStrata("HIGH")
-Frame:SetFrameLevel((ParentBook:GetFrameLevel() or 1) + 20)
+Frame:SetFrameLevel(120)
 Frame:SetSize(940, 610)
 Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
+
+local function AnchorToParentBook()
+    if not ParentBook then return end
+    Frame:ClearAllPoints()
+    Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
+end
 Frame:EnableMouse(true)
 SetBackdrop(Frame, 0.985, 0.95, 16)
-Frame:Show()
+Frame:Hide()
 
 Frame.currentPage = 1
 Frame.itemsPerPage = 15
@@ -113,7 +119,7 @@ local title = Frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("LEFT", header, "LEFT", 18, 0)
 title:SetPoint("RIGHT", header, "RIGHT", -18, 0)
 title:SetJustifyH("LEFT")
-title:SetText("Modern Spellbook Built by DarkSolis - Version 2.4.4")
+title:SetText("Modern Spellbook Built by DarkSolis - Version 2.4.6")
 title:SetTextColor(0.97, 0.98, 1)
 
 local function StyleButton(button)
@@ -1050,6 +1056,7 @@ local function RestoreNativeSpellContent()
 end
 
 local function Activate()
+    AnchorToParentBook()
     if not IsSpellContentActive() then
         Frame:SetAlpha(0)
         RestoreNativeSpellContent()
@@ -1062,10 +1069,19 @@ local function Activate()
 end
 
 ParentBook:HookScript("OnShow", function()
+    AnchorToParentBook()
     Frame:Show()
     Activate()
 end)
 ParentBook:HookScript("OnHide", function()
+    -- Ascension may transiently hide its protected spellbook shell when combat
+    -- begins. The rebuilt book is intentionally independent and must remain
+    -- visible in that case. Outside combat, a real close still hides it.
+    if InCombatLockdown and InCombatLockdown() then
+        Frame.keepVisibleThroughCombat = Frame:IsShown()
+        return
+    end
+    Frame.keepVisibleThroughCombat = nil
     Frame:Hide()
     RestoreNativeSpellContent()
 end)
@@ -1091,11 +1107,24 @@ events:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_PET" and unit ~= "player" then return end
     if event == "PLAYER_REGEN_DISABLED" then
         SetCombatControlsLocked(true)
+        if Frame:IsShown() or ParentBook:IsShown() then
+            Frame.keepVisibleThroughCombat = true
+            AnchorToParentBook()
+            Frame:Show()
+        end
         return
     end
     if event == "PLAYER_REGEN_ENABLED" then
         SetCombatControlsLocked(false)
-        SuppressNativeSpellContent()
+        if ParentBook:IsShown() or Frame.keepVisibleThroughCombat then
+            AnchorToParentBook()
+            Frame:Show()
+            SuppressNativeSpellContent()
+        else
+            Frame:Hide()
+            RestoreNativeSpellContent()
+        end
+        Frame.keepVisibleThroughCombat = nil
         if Frame.pendingRefresh or ParentBook:IsShown() then Frame:Refresh() end
         return
     end
@@ -1138,5 +1167,15 @@ end
 
 UpdateModeAppearance()
 SetCombatControlsLocked(InCombatLockdown and InCombatLockdown())
-SuppressNativeSpellContent()
+
+-- Build the secure spell pages at login while keeping the custom window hidden.
+-- Native shell suppression must only happen after the player actually opens the
+-- spellbook; doing it during file load made the rebuilt window appear on login.
 Frame:Refresh()
+if ParentBook:IsShown() and IsSpellContentActive() then
+    AnchorToParentBook()
+    Frame:Show()
+    SuppressNativeSpellContent()
+else
+    Frame:Hide()
+end
