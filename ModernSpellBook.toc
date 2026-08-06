@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: Modern Spellbook |cff55aaffby DarkSolis|r
-## Notes: A from-scratch spellbook replacement for Ascension CoA with reliable slot-based icons, search, passives, ranks, pet spells, and large page controls.
-## Version: 2.3.4-CoA-DarkSolis
+## Notes: Secure paged spellbook for Ascension CoA with click-to-cast, combat page navigation, drag-to-bar, categories, search, passives, ranks, and pet spells.
+## Version: 2.4.0-CoA-DarkSolis
 ## DefaultState: enabled
 ## SavedVariablesPerCharacter: ModernSpellBookRebuiltDB
 

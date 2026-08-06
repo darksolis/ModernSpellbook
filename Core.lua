@@ -2,7 +2,7 @@
 -- Fresh implementation for WoW 3.3.5a / Ascension CoA.
 
 local ADDON_NAME = "ModernSpellBook"
-local VERSION = "2.3.4-CoA-DarkSolis"
+local VERSION = "2.4.4-CoA-DarkSolis-SecurePages"
 local BOOK_SPELL = BOOKTYPE_SPELL or "spell"
 local BOOK_PET = BOOKTYPE_PET or "pet"
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -77,14 +77,14 @@ local function SpellLink(info)
     return info.name
 end
 
-local Frame = CreateFrame("Frame", "ModernSpellBookRebuiltFrame", UIParent)
+local Frame = CreateFrame("Frame", "ModernSpellBookRebuiltFrame", ParentBook)
 Frame:SetFrameStrata("HIGH")
 Frame:SetFrameLevel((ParentBook:GetFrameLevel() or 1) + 20)
 Frame:SetSize(940, 610)
 Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
 Frame:EnableMouse(true)
 SetBackdrop(Frame, 0.985, 0.95, 16)
-Frame:Hide()
+Frame:Show()
 
 Frame.currentPage = 1
 Frame.itemsPerPage = 15
@@ -96,6 +96,8 @@ Frame.refreshToken = 0
 Frame.mode = DB.mode
 Frame.nativeAlpha = nil
 Frame.nativeMouseEnabled = nil
+Frame.nativeRegionStates = {}
+Frame.nativeChildStates = {}
 
 local header = CreateSolid(Frame, "BACKGROUND", 0, 0.035, 0.04, 0.065, 1)
 header:SetPoint("TOPLEFT", Frame, "TOPLEFT", 5, -5)
@@ -111,7 +113,7 @@ local title = Frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("LEFT", header, "LEFT", 18, 0)
 title:SetPoint("RIGHT", header, "RIGHT", -18, 0)
 title:SetJustifyH("LEFT")
-title:SetText("Modern Spellbook Built by DarkSolis - Version 2.3.4")
+title:SetText("Modern Spellbook Built by DarkSolis - Version 2.4.4")
 title:SetTextColor(0.97, 0.98, 1)
 
 local function StyleButton(button)
@@ -236,7 +238,7 @@ emptyText:SetText("No spells found")
 emptyText:SetTextColor(0.68, 0.73, 0.82)
 emptyText:Hide()
 
-local previous = CreateFrame("Button", nil, Frame)
+local previous = CreateFrame("Button", "ModernSpellBookPreviousPageButton", Frame, "SecureHandlerClickTemplate")
 previous:SetSize(174, 40)
 previous:SetPoint("BOTTOM", Frame, "BOTTOM", -205, 18)
 previous:SetText("<  Previous Page")
@@ -244,7 +246,7 @@ previous:SetNormalFontObject("GameFontNormal")
 StyleButton(previous)
 previous:SetFrameLevel(Frame:GetFrameLevel() + 8)
 
-local nextButton = CreateFrame("Button", nil, Frame)
+local nextButton = CreateFrame("Button", "ModernSpellBookNextPageButton", Frame, "SecureHandlerClickTemplate")
 nextButton:SetSize(174, 40)
 nextButton:SetPoint("BOTTOM", Frame, "BOTTOM", 205, 18)
 nextButton:SetText("Next Page  >")
@@ -265,11 +267,11 @@ closeButton:SetNormalFontObject("GameFontNormalLarge")
 StyleButton(closeButton)
 closeButton:SetFrameLevel(Frame:GetFrameLevel() + 10)
 closeButton:SetScript("OnClick", function()
-    if HideUIPanel then
-        HideUIPanel(ParentBook)
-    else
-        ParentBook:Hide()
+    if InCombatLockdown and InCombatLockdown() then
+        UIErrorsFrame:AddMessage("Modern Spellbook: close the spellbook with the game keybind while in combat.", 1, 0.25, 0.25)
+        return
     end
+    if HideUIPanel then HideUIPanel(ParentBook) else ParentBook:Hide() end
 end)
 
 local function UpdateModeAppearance()
@@ -293,153 +295,6 @@ petMode:SetScript("OnClick", function()
     UpdateModeAppearance()
     Frame:Refresh()
 end)
-
-local function CreateCard(index)
-    local card = CreateFrame("Button", nil, grid)
-    card:SetSize(232, 62)
-    card:RegisterForClicks("AnyUp")
-    card:RegisterForDrag("LeftButton")
-    card:SetFrameLevel(Frame:GetFrameLevel() + 4)
-    SetBackdrop(card, 0.94, 0.72, 10)
-    card:SetBackdropBorderColor(0.13, 0.17, 0.24, 1)
-
-    card.iconBackground = CreateSolid(card, "BACKGROUND", 1, 0.02, 0.025, 0.035, 1)
-    card.iconBackground:SetSize(48, 48)
-    card.iconBackground:SetPoint("LEFT", card, "LEFT", 7, 0)
-
-    card.icon = card:CreateTexture(nil, "ARTWORK")
-    card.icon:SetSize(42, 42)
-    card.icon:SetPoint("CENTER", card.iconBackground, "CENTER", 0, 0)
-    card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-
-    card.cooldown = CreateFrame("Cooldown", nil, card, "CooldownFrameTemplate")
-    card.cooldown:SetAllPoints(card.icon)
-    if card.cooldown.SetDrawEdge then card.cooldown:SetDrawEdge(false) end
-
-    card.name = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    card.name:SetPoint("TOPLEFT", card, "TOPLEFT", 62, -8)
-    card.name:SetPoint("RIGHT", card, "RIGHT", -7, 0)
-    card.name:SetJustifyH("LEFT")
-    card.name:SetJustifyV("TOP")
-    card.name:SetTextColor(0.96, 0.97, 1)
-
-    card.rank = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    card.rank:SetPoint("TOPLEFT", card.name, "BOTTOMLEFT", 0, -2)
-    card.rank:SetPoint("RIGHT", card, "RIGHT", -7, 0)
-    card.rank:SetJustifyH("LEFT")
-    card.rank:SetTextColor(0.58, 0.64, 0.73)
-
-    card.category = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    card.category:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 62, 7)
-    card.category:SetPoint("RIGHT", card, "RIGHT", -7, 0)
-    card.category:SetJustifyH("LEFT")
-    card.category:SetTextColor(accentR, accentG, accentB)
-
-    card.highlight = CreateSolid(card, "HIGHLIGHT", 0, accentR, accentG, accentB, 0.13)
-    card.highlight:SetAllPoints(card)
-    card:SetHighlightTexture(card.highlight)
-
-    card:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(accentR, accentG, accentB, 1)
-        local info = self.info
-        if not info then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if GameTooltip.SetSpellBookItem and info.slot then
-            GameTooltip:SetSpellBookItem(info.slot, info.bookType)
-        elseif info.spellID and GameTooltip.SetSpellByID then
-            GameTooltip:SetSpellByID(info.spellID)
-        else
-            GameTooltip:SetText(info.name or "Spell")
-        end
-        GameTooltip:Show()
-    end)
-
-    card:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(0.13, 0.17, 0.24, 1)
-        GameTooltip:Hide()
-    end)
-
-    local function RestoreCardIcon(self)
-        local info = self.info
-        if not info or not self.icon then return end
-        self.icon:SetTexture(info.icon or QUESTION_MARK)
-        self.icon:Show()
-    end
-
-    local function PickupCardSpell(self)
-        local info = self.info
-        if not info or info.passive or not info.slot then return false end
-
-        local pickedUp = false
-        if info.bookType == BOOK_PET and PickupPetSpell then
-            PickupPetSpell(info.slot)
-            pickedUp = true
-        elseif PickupSpell then
-            PickupSpell(info.slot, info.bookType or BOOK_SPELL)
-            pickedUp = true
-        end
-
-        if pickedUp then
-            Frame.dragInProgress = true
-            Frame.dragCard = self
-            RestoreCardIcon(self)
-            self.restoreIconDelay = 0.05
-        end
-        return pickedUp
-    end
-
-    card:SetScript("OnMouseDown", function(self, button)
-        local info = self.info
-        if not info then return end
-        self.dragStarted = false
-        if IsModifiedClick and IsModifiedClick("CHATLINK") then
-            local link = SpellLink(info)
-            if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
-        end
-    end)
-
-    -- Cards are intentionally drag-only. Calling CastSpell or CastSpellByName
-    -- from an ordinary addon button taints the secure cast path on Ascension.
-    card:SetScript("OnClick", function() end)
-
-    card:SetScript("OnDragStart", function(self)
-        if PickupCardSpell(self) then
-            self.dragStarted = true
-        end
-    end)
-
-    card:SetScript("OnUpdate", function(self, elapsed)
-        if self.restoreIconDelay then
-            self.restoreIconDelay = self.restoreIconDelay - elapsed
-            if self.restoreIconDelay <= 0 then
-                self.restoreIconDelay = nil
-                RestoreCardIcon(self)
-            end
-        end
-
-        if not self.info or self.info.passive then return end
-        self.cooldownElapsed = (self.cooldownElapsed or 0) + elapsed
-        if self.cooldownElapsed < 0.15 then return end
-        self.cooldownElapsed = 0
-        local name = self.info.castName or self.info.name
-        if name and GetSpellCooldown and CooldownFrame_Set then
-            local start, duration, enabled = GetSpellCooldown(name)
-            CooldownFrame_Set(self.cooldown, start or 0, duration or 0, enabled or 0)
-        end
-    end)
-
-    Frame.cards[index] = card
-    return card
-end
-
-local function HideCards()
-    if Frame.dragInProgress then return end
-    for _, card in ipairs(Frame.cards) do
-        card:Hide()
-        card.info = nil
-        if card.cooldown then card.cooldown:Hide() end
-    end
-end
 
 local function ReadSpellSlot(slot, bookType, category)
     local name, rank = GetSpellBookItemName(slot, bookType)
@@ -673,131 +528,422 @@ local function BuildCategoryPages(spells)
     return pages
 end
 
-function Frame:PopulateCards()
-    HideCards()
 
-    local total = #self.spells
-    local maxPages = math.max(1, #self.pages)
-    self.currentPage = math.max(1, math.min(self.currentPage, maxPages))
-    local page = self.pages[self.currentPage]
-    local pageSpells = page and page.spells or {}
-    local shown = 0
+local MAX_SECURE_PAGES = 40
+Frame.securePages = {}
+Frame.pendingRefresh = nil
+Frame.currentPage = 1
+
+local function SetCombatControlsLocked(locked)
+    if locked then
+        if search.ClearFocus then search:ClearFocus() end
+        if search.Disable then search:Disable() end
+        allRanks:Disable()
+        passives:Disable()
+        playerMode:Disable()
+        petMode:Disable()
+        allRanks:SetAlpha(0.55)
+        passives:SetAlpha(0.55)
+        playerMode:SetAlpha(0.55)
+        petMode:SetAlpha(0.55)
+        search:SetAlpha(0.55)
+    else
+        if search.Enable then search:Enable() end
+        allRanks:Enable()
+        passives:Enable()
+        playerMode:Enable()
+        petMode:Enable()
+        allRanks:SetAlpha(1)
+        passives:SetAlpha(1)
+        playerMode:SetAlpha(1)
+        petMode:SetAlpha(1)
+        search:SetAlpha(1)
+    end
+end
+
+local function SecureSpellName(info)
+    if not info or not info.name then return nil end
+    if info.rank and info.rank ~= "" then
+        return info.name .. "(" .. info.rank .. ")"
+    end
+    return info.name
+end
+
+local function CreateSecureCard(pageFrame, index)
+    local card = CreateFrame("Button", nil, pageFrame, "SecureActionButtonTemplate")
+    card:SetSize(232, 62)
+    card:RegisterForClicks("AnyUp")
+    card:RegisterForDrag("LeftButton")
+    card:SetFrameLevel(Frame:GetFrameLevel() + 6)
+    SetBackdrop(card, 0.94, 0.72, 10)
+    card:SetBackdropBorderColor(0.13, 0.17, 0.24, 1)
+
+    card.iconBackground = CreateSolid(card, "BACKGROUND", 1, 0.02, 0.025, 0.035, 1)
+    card.iconBackground:SetSize(48, 48)
+    card.iconBackground:SetPoint("LEFT", card, "LEFT", 7, 0)
+
+    card.icon = card:CreateTexture(nil, "ARTWORK")
+    card.icon:SetSize(42, 42)
+    card.icon:SetPoint("CENTER", card.iconBackground, "CENTER", 0, 0)
+    card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+    card.cooldown = CreateFrame("Cooldown", nil, card, "CooldownFrameTemplate")
+    card.cooldown:SetAllPoints(card.icon)
+    if card.cooldown.SetDrawEdge then card.cooldown:SetDrawEdge(false) end
+
+    card.name = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    card.name:SetPoint("TOPLEFT", card, "TOPLEFT", 62, -8)
+    card.name:SetPoint("RIGHT", card, "RIGHT", -7, 0)
+    card.name:SetJustifyH("LEFT")
+    card.name:SetJustifyV("TOP")
+    card.name:SetTextColor(0.96, 0.97, 1)
+
+    card.rank = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    card.rank:SetPoint("TOPLEFT", card.name, "BOTTOMLEFT", 0, -2)
+    card.rank:SetPoint("RIGHT", card, "RIGHT", -7, 0)
+    card.rank:SetJustifyH("LEFT")
+    card.rank:SetTextColor(0.58, 0.64, 0.73)
+
+    card.category = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    card.category:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 62, 7)
+    card.category:SetPoint("RIGHT", card, "RIGHT", -7, 0)
+    card.category:SetJustifyH("LEFT")
+    card.category:SetTextColor(accentR, accentG, accentB)
+
+    card.highlight = CreateSolid(card, "HIGHLIGHT", 0, accentR, accentG, accentB, 0.13)
+    card.highlight:SetAllPoints(card)
+    card:SetHighlightTexture(card.highlight)
+
+    card:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(accentR, accentG, accentB, 1)
+        local info = self.info
+        if not info then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if GameTooltip.SetSpellBookItem and info.slot then
+            GameTooltip:SetSpellBookItem(info.slot, info.bookType)
+        elseif info.spellID and GameTooltip.SetSpellByID then
+            GameTooltip:SetSpellByID(info.spellID)
+        else
+            GameTooltip:SetText(info.name or "Spell")
+        end
+        GameTooltip:Show()
+    end)
+
+    card:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(0.13, 0.17, 0.24, 1)
+        GameTooltip:Hide()
+    end)
+
+    card:SetScript("OnDragStart", function(self)
+        local info = self.info
+        if not info or info.passive or not info.slot then return end
+        if info.bookType == BOOK_PET and PickupPetSpell then
+            PickupPetSpell(info.slot)
+        elseif PickupSpell then
+            PickupSpell(info.slot, info.bookType or BOOK_SPELL)
+        end
+        self.icon:SetTexture(info.icon or QUESTION_MARK)
+        self.icon:Show()
+    end)
+
+    card:SetScript("OnMouseDown", function(self)
+        local info = self.info
+        if not info then return end
+        if IsModifiedClick and IsModifiedClick("CHATLINK") then
+            local link = SpellLink(info)
+            if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
+        end
+    end)
+
+    card:SetScript("OnUpdate", function(self, elapsed)
+        if not self.info or self.info.passive then return end
+        self.cooldownElapsed = (self.cooldownElapsed or 0) + elapsed
+        if self.cooldownElapsed < 0.15 then return end
+        self.cooldownElapsed = 0
+        local name = self.info.castName or self.info.name
+        if name and GetSpellCooldown and CooldownFrame_Set then
+            local start, duration, enabled = GetSpellCooldown(name)
+            CooldownFrame_Set(self.cooldown, start or 0, duration or 0, enabled or 0)
+        end
+    end)
+
+    pageFrame.cards[index] = card
+    return card
+end
+
+local function EnsureSecurePage(index)
+    local pageFrame = Frame.securePages[index]
+    if pageFrame then return pageFrame end
+
+    pageFrame = CreateFrame("Frame", nil, Frame, "SecureHandlerBaseTemplate")
+    pageFrame:SetPoint("TOPLEFT", Frame, "TOPLEFT", 16, -105)
+    pageFrame:SetPoint("BOTTOMRIGHT", Frame, "BOTTOMRIGHT", -16, 78)
+    pageFrame:SetFrameLevel(Frame:GetFrameLevel() + 3)
+    pageFrame.cards = {}
+
+    pageFrame.categoryTitle = pageFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    pageFrame.categoryTitle:SetPoint("TOPLEFT", pageFrame, "TOPLEFT", 4, -2)
+    pageFrame.categoryTitle:SetTextColor(accentR, accentG, accentB)
+
+    pageFrame.categoryPageText = pageFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    pageFrame.categoryPageText:SetPoint("TOPRIGHT", pageFrame, "TOPRIGHT", -4, -5)
+    pageFrame.categoryPageText:SetTextColor(0.58, 0.64, 0.73)
+
+    pageFrame.line = CreateSolid(pageFrame, "BACKGROUND", 0, accentR, accentG, accentB, 0.28)
+    pageFrame.line:SetPoint("TOPLEFT", pageFrame, "TOPLEFT", 0, -34)
+    pageFrame.line:SetPoint("TOPRIGHT", pageFrame, "TOPRIGHT", 0, -34)
+    pageFrame.line:SetHeight(1)
+
+    pageFrame.pageCounter = pageFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    pageFrame.pageCounter:SetPoint("BOTTOM", Frame, "BOTTOM", 0, 31)
+    pageFrame.pageCounter:SetTextColor(0.94, 0.96, 1)
+
+    Frame.securePages[index] = pageFrame
+    return pageFrame
+end
+
+local function ConfigureSecureCard(card, info, column, row, cardWidth, cardHeight)
+    card:ClearAllPoints()
+    card:SetSize(cardWidth, cardHeight)
+    card:SetPoint("TOPLEFT", card:GetParent(), "TOPLEFT", column * (cardWidth + 12), -45 - row * (cardHeight + 10))
+    card.info = info
+    card.icon:SetTexture(info.icon or QUESTION_MARK)
+    card.icon:Show()
+    card.name:SetText(info.name or "Unknown Spell")
+    card.rank:SetText(info.rank ~= "" and info.rank or (info.passive and "Passive" or ""))
+    card.category:SetText(info.isTalentAbility and "Talent ability" or (info.sourceCategory or info.category or "Spells"))
+    card.cooldownElapsed = 0.2
+
+    card:SetAttribute("type1", nil)
+    card:SetAttribute("spell", nil)
+    card:SetAttribute("action", nil)
+    if not info.passive then
+        if info.bookType == BOOK_PET then
+            card:SetAttribute("type1", "pet")
+            card:SetAttribute("action", info.castName or info.name)
+        else
+            card:SetAttribute("type1", "spell")
+            card:SetAttribute("spell", SecureSpellName(info))
+        end
+        card.cooldown:Show()
+    else
+        card.cooldown:Hide()
+    end
+    card:Show()
+end
+
+local SECURE_PAGE_CLICK = [[
+    local current = self:GetAttribute("currentPage") or 1
+    local maximum = self:GetAttribute("maxPages") or 1
+    local direction = self:GetAttribute("direction") or 0
+    local target = current + direction
+    if target < 1 then target = 1 end
+    if target > maximum then target = maximum end
+    if target ~= current then
+        local oldPage = self:GetFrameRef("page" .. current)
+        local newPage = self:GetFrameRef("page" .. target)
+        if oldPage then oldPage:Hide() end
+        if newPage then newPage:Show() end
+        self:SetAttribute("currentPage", target)
+        local other = self:GetFrameRef("otherButton")
+        if other then other:SetAttribute("currentPage", target) end
+    end
+]]
+
+previous:SetAttribute("direction", -1)
+nextButton:SetAttribute("direction", 1)
+previous:SetAttribute("_onclick", SECURE_PAGE_CLICK)
+nextButton:SetAttribute("_onclick", SECURE_PAGE_CLICK)
+previous:SetFrameRef("otherButton", nextButton)
+nextButton:SetFrameRef("otherButton", previous)
+
+local function SyncCurrentPageFromSecure(button)
+    local value = tonumber(button:GetAttribute("currentPage")) or Frame.currentPage or 1
+    Frame.currentPage = value
+    if PlaySound then PlaySound("igMainMenuOptionCheckBoxOn") end
+end
+previous:HookScript("PostClick", SyncCurrentPageFromSecure)
+nextButton:HookScript("PostClick", SyncCurrentPageFromSecure)
+
+function Frame:BuildSecurePages()
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingRefresh = true
+        return
+    end
+
+    local totalPages = math.max(1, #self.pages)
+    if totalPages > MAX_SECURE_PAGES then totalPages = MAX_SECURE_PAGES end
+    self.currentPage = math.max(1, math.min(self.currentPage or 1, totalPages))
+
+    categoryTitle:Hide()
+    categoryPageText:Hide()
+    pageText:Hide()
+    emptyText:Hide()
 
     local width = math.max(720, grid:GetWidth())
     local height = math.max(350, grid:GetHeight())
-    local columns = 3
-    local rows = 5
-    local horizontalGap = 12
-    local verticalGap = 10
-    local cardWidth = math.floor((width - horizontalGap * (columns - 1)) / columns)
-    local cardHeight = math.floor((height - verticalGap * (rows - 1)) / rows)
-    cardWidth = math.max(210, math.min(340, cardWidth))
-    cardHeight = math.max(60, math.min(72, cardHeight))
+    local cardWidth = math.max(210, math.min(340, math.floor((width - 24) / 3)))
+    local cardHeight = math.max(60, math.min(72, math.floor((height - 40) / 5)))
 
-    for _, info in ipairs(pageSpells) do
-        shown = shown + 1
-        local card = self.cards[shown] or CreateCard(shown)
-        local column = (shown - 1) % columns
-        local row = math.floor((shown - 1) / columns)
+    for pageIndex = 1, math.max(totalPages, #self.securePages) do
+        local pageFrame = EnsureSecurePage(pageIndex)
+        local pageData = self.pages[pageIndex]
+        if pageIndex <= totalPages and pageData then
+            pageFrame.categoryTitle:SetText(pageData.category or "Spells")
+            if pageData.categoryPages and pageData.categoryPages > 1 then
+                pageFrame.categoryPageText:SetText(string.format("Category page %d of %d", pageData.categoryPage, pageData.categoryPages))
+            else
+                local count = #(pageData.spells or {})
+                pageFrame.categoryPageText:SetText(string.format("%d spell%s in category", count, count == 1 and "" or "s"))
+            end
+            pageFrame.pageCounter:SetText(string.format("Page %d of %d", pageIndex, totalPages))
 
-        card:ClearAllPoints()
-        card:SetSize(cardWidth, cardHeight)
-        card:SetPoint("TOPLEFT", grid, "TOPLEFT", column * (cardWidth + horizontalGap), -row * (cardHeight + verticalGap))
-        card.info = info
-        card.icon:SetTexture(info.icon or QUESTION_MARK)
-        card.name:SetText(info.name or "Unknown Spell")
-        card.rank:SetText(info.rank ~= "" and info.rank or (info.passive and "Passive" or ""))
-        card.category:SetText(info.isTalentAbility and "Talent ability" or (info.sourceCategory or info.category or "Spells"))
-        if info.passive then card.cooldown:Hide() else card.cooldown:Show() end
-        card.cooldownElapsed = 0.2
-
-        card:Show()
-    end
-
-    if total == 0 then
-        emptyText:Show()
-        categoryTitle:SetText(self.mode == "pet" and "Pet Spells" or "Spells")
-        categoryPageText:SetText("")
-    else
-        emptyText:Hide()
-        categoryTitle:SetText(page.category or "Spells")
-        if page.categoryPages and page.categoryPages > 1 then
-            categoryPageText:SetText(string.format("Category page %d of %d", page.categoryPage, page.categoryPages))
+            local pageSpells = pageData.spells or {}
+            for cardIndex = 1, self.itemsPerPage do
+                local card = pageFrame.cards[cardIndex] or CreateSecureCard(pageFrame, cardIndex)
+                local info = pageSpells[cardIndex]
+                if info then
+                    local column = (cardIndex - 1) % 3
+                    local row = math.floor((cardIndex - 1) / 3)
+                    ConfigureSecureCard(card, info, column, row, cardWidth, cardHeight)
+                else
+                    card:SetAttribute("type1", nil)
+                    card:SetAttribute("spell", nil)
+                    card:SetAttribute("action", nil)
+                    card.info = nil
+                    card:Hide()
+                end
+            end
         else
-            categoryPageText:SetText(string.format("%d spell%s in category", #pageSpells, #pageSpells == 1 and "" or "s"))
+            for _, card in ipairs(pageFrame.cards) do
+                card:SetAttribute("type1", nil)
+                card:SetAttribute("spell", nil)
+                card:SetAttribute("action", nil)
+                card.info = nil
+                card:Hide()
+            end
+            pageFrame.categoryTitle:SetText("No spells found")
+            pageFrame.categoryPageText:SetText("")
+            pageFrame.pageCounter:SetText("Page 1 of 1")
         end
+
+        if pageIndex == self.currentPage and pageIndex <= totalPages then pageFrame:Show() else pageFrame:Hide() end
+        previous:SetFrameRef("page" .. pageIndex, pageFrame)
+        nextButton:SetFrameRef("page" .. pageIndex, pageFrame)
     end
 
-    pageText:SetText(string.format("Page %d of %d", self.currentPage, maxPages))
-    countText:SetText(string.format("%d spell%s", total, total == 1 and "" or "s"))
-
-    if self.currentPage > 1 then previous:Enable() else previous:Disable() end
-    if self.currentPage < maxPages then nextButton:Enable() else nextButton:Disable() end
-    previous:SetAlpha(self.currentPage > 1 and 1 or 0.42)
-    nextButton:SetAlpha(self.currentPage < maxPages and 1 or 0.42)
+    previous:SetAttribute("currentPage", self.currentPage)
+    nextButton:SetAttribute("currentPage", self.currentPage)
+    previous:SetAttribute("maxPages", totalPages)
+    nextButton:SetAttribute("maxPages", totalPages)
+    countText:SetText(string.format("%d spell%s", #self.spells, #self.spells == 1 and "" or "s"))
+    self.pendingRefresh = nil
 end
 
 function Frame:Refresh()
-    local cursorType = GetCursorInfo and GetCursorInfo()
-    if Frame.dragInProgress or cursorType == "spell" or cursorType == "petaction" then
-        self:ScheduleRefresh(0.15, false)
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingRefresh = true
         return
     end
 
     local raw
-    if self.mode == "pet" then
-        raw = CollectPetSpells()
-    else
-        raw = CollectPlayerSpells()
-    end
-
+    if self.mode == "pet" then raw = CollectPetSpells() else raw = CollectPlayerSpells() end
     self.spells = FilterAndSort(raw)
     self.pages = BuildCategoryPages(self.spells)
-    self:PopulateCards()
-    self.pendingRefresh = nil
+    self:BuildSecurePages()
 end
 
 function Frame:ScheduleRefresh(delay, resetPage)
+    if resetPage then self.currentPage = 1 end
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingRefresh = true
+        return
+    end
     self.refreshToken = self.refreshToken + 1
     local token = self.refreshToken
-    if resetPage then self.currentPage = 1 end
-
     local timer = CreateFrame("Frame")
     timer.remaining = delay or 0
     timer:SetScript("OnUpdate", function(self, elapsed)
         self.remaining = self.remaining - elapsed
         if self.remaining > 0 then return end
         self:SetScript("OnUpdate", nil)
-        if token == Frame.refreshToken and Frame:IsShown() then
-            Frame:Refresh()
-        end
+        if token == Frame.refreshToken and ParentBook:IsShown() then Frame:Refresh() end
     end)
 end
 
-previous:SetScript("OnClick", function()
-    if Frame.currentPage <= 1 then return end
-    Frame.currentPage = Frame.currentPage - 1
-    Frame:PopulateCards()
-    PlaySound("igMainMenuOptionCheckBoxOn")
+-- Rebind controls so data-changing operations queue until combat ends.
+allRanks:SetScript("OnClick", function(self)
+    if InCombatLockdown and InCombatLockdown() then
+        self:SetChecked(DB.showAllRanks)
+        UIErrorsFrame:AddMessage("Modern Spellbook: rank filtering updates after combat.", 1, 0.82, 0)
+        return
+    end
+    DB.showAllRanks = self:GetChecked() and true or false
+    Frame.currentPage = 1
+    Frame:Refresh()
 end)
 
-nextButton:SetScript("OnClick", function()
-    local maxPages = math.max(1, #Frame.pages)
-    if Frame.currentPage >= maxPages then return end
-    Frame.currentPage = Frame.currentPage + 1
-    Frame:PopulateCards()
-    PlaySound("igMainMenuOptionCheckBoxOn")
+passives:SetScript("OnClick", function(self)
+    if InCombatLockdown and InCombatLockdown() then
+        self:SetChecked(DB.showPassives)
+        UIErrorsFrame:AddMessage("Modern Spellbook: passive filtering updates after combat.", 1, 0.82, 0)
+        return
+    end
+    DB.showPassives = self:GetChecked() and true or false
+    Frame.currentPage = 1
+    Frame:Refresh()
 end)
+
+playerMode:SetScript("OnClick", function()
+    if InCombatLockdown and InCombatLockdown() then return end
+    Frame.mode = "player"
+    DB.mode = "player"
+    Frame.currentPage = 1
+    UpdateModeAppearance()
+    Frame:Refresh()
+end)
+
+petMode:SetScript("OnClick", function()
+    if InCombatLockdown and InCombatLockdown() then return end
+    Frame.mode = "pet"
+    DB.mode = "pet"
+    Frame.currentPage = 1
+    UpdateModeAppearance()
+    Frame:Refresh()
+end)
+
+-- Mouse-wheel paging is intentionally local to the spellbook.
+-- Do not use SetOverrideBindingClick here: that steals the player's global
+-- camera zoom bindings even when the cursor is nowhere near the book.
+local function ChangePageFromMouseWheel(direction)
+    -- Secure footer buttons remain the supported combat navigation path.
+    -- Outside combat, the wheel can safely update the already-built pages.
+    if InCombatLockdown and InCombatLockdown() then return end
+
+    local maximum = math.max(1, #Frame.pages)
+    local current = math.max(1, math.min(Frame.currentPage or 1, maximum))
+    local target = current + direction
+    if target < 1 then target = 1 end
+    if target > maximum then target = maximum end
+    if target == current then return end
+
+    local oldPage = Frame.securePages and Frame.securePages[current]
+    local newPage = Frame.securePages and Frame.securePages[target]
+    if oldPage then oldPage:Hide() end
+    if newPage then newPage:Show() end
+
+    Frame.currentPage = target
+    previous:SetAttribute("currentPage", target)
+    nextButton:SetAttribute("currentPage", target)
+    if PlaySound then PlaySound("igMainMenuOptionCheckBoxOn") end
+end
 
 Frame:EnableMouseWheel(true)
 Frame:SetScript("OnMouseWheel", function(_, delta)
-    local maxPages = math.max(1, #Frame.pages)
-    if delta < 0 and Frame.currentPage < maxPages then
-        Frame.currentPage = Frame.currentPage + 1
-        Frame:PopulateCards()
-    elseif delta > 0 and Frame.currentPage > 1 then
-        Frame.currentPage = Frame.currentPage - 1
-        Frame:PopulateCards()
+    if delta > 0 then
+        ChangePageFromMouseWheel(-1)
+    elseif delta < 0 then
+        ChangePageFromMouseWheel(1)
     end
 end)
 
@@ -808,76 +954,125 @@ local function IsSpellContentActive()
     return not name or name == "AscensionSpellbookFrameContentSpells"
 end
 
-local function SetNativeShellVisible(show)
-    -- The rebuilt book is parented to UIParent, so the Ascension shell can be
-    -- made transparent without affecting the custom display. SetAlpha is not a
-    -- protected visibility operation and is safe during combat.
-    if show then
-        ParentBook:SetAlpha(Frame.nativeAlpha or 1)
-        Frame.nativeAlpha = nil
-        if Frame.nativeMouseEnabled ~= nil and ParentBook.EnableMouse then
-            ParentBook:EnableMouse(Frame.nativeMouseEnabled)
+local function SetRegionAlphaState(region, key, alpha)
+    if not region then return end
+    if Frame.nativeRegionStates[key] == nil and region.GetAlpha then
+        Frame.nativeRegionStates[key] = region:GetAlpha()
+    end
+    if region.SetAlpha then region:SetAlpha(alpha) end
+end
+
+local function RestoreRegionAlphaState(region, key)
+    if not region then return end
+    local old = Frame.nativeRegionStates[key]
+    if old ~= nil and region.SetAlpha then region:SetAlpha(old) end
+end
+
+local function SetChildSuppressed(child, key)
+    if not child then return end
+    if Frame.nativeChildStates[key] == nil then
+        Frame.nativeChildStates[key] = { alpha = child.GetAlpha and child:GetAlpha() or 1, shown = child.IsShown and child:IsShown() or true }
+    end
+    if child.SetAlpha then child:SetAlpha(0) end
+    if child.Hide and not (InCombatLockdown and InCombatLockdown()) then child:Hide() end
+    if child.EnableMouse and not (InCombatLockdown and InCombatLockdown()) then child:EnableMouse(false) end
+end
+
+local function RestoreChildSuppressed(child, key)
+    if not child then return end
+    local old = Frame.nativeChildStates[key]
+    if not old then return end
+    if child.SetAlpha then child:SetAlpha(old.alpha or 1) end
+    if not (InCombatLockdown and InCombatLockdown()) then
+        if old.shown and child.Show then child:Show() end
+        if child.EnableMouse then child:EnableMouse(true) end
+    end
+end
+
+local function SuppressNativeShell()
+    if ParentBook.GetRegions then
+        local regions = { ParentBook:GetRegions() }
+        for i, region in ipairs(regions) do
+            local objectType = region.GetObjectType and region:GetObjectType()
+            if objectType == "Texture" or objectType == "FontString" then
+                SetRegionAlphaState(region, i, 0)
+            end
         end
-        Frame.nativeMouseEnabled = nil
-    else
-        if Frame.nativeAlpha == nil then Frame.nativeAlpha = ParentBook:GetAlpha() end
-        ParentBook:SetAlpha(0)
-        -- Do not alter protected child visibility. The custom frame sits at a
-        -- higher strata and receives interaction inside the rebuilt book.
+    end
+
+    SetChildSuppressed(_G["AscensionSpellbookFrameCloseButton"], "AscensionSpellbookFrameCloseButton")
+    SetChildSuppressed(_G["SpellBookFrameCloseButton"], "SpellBookFrameCloseButton")
+    SetChildSuppressed(_G["AscensionSpellbookFrameTitleText"], "AscensionSpellbookFrameTitleText")
+    if ParentBook.backdrop then SetChildSuppressed(ParentBook.backdrop, "ParentBookBackdrop") end
+end
+
+local function RestoreNativeShell()
+    if ParentBook.GetRegions then
+        local regions = { ParentBook:GetRegions() }
+        for i, region in ipairs(regions) do
+            local objectType = region.GetObjectType and region:GetObjectType()
+            if objectType == "Texture" or objectType == "FontString" then
+                RestoreRegionAlphaState(region, i)
+            end
+        end
+    end
+
+    RestoreChildSuppressed(_G["AscensionSpellbookFrameCloseButton"], "AscensionSpellbookFrameCloseButton")
+    RestoreChildSuppressed(_G["SpellBookFrameCloseButton"], "SpellBookFrameCloseButton")
+    RestoreChildSuppressed(_G["AscensionSpellbookFrameTitleText"], "AscensionSpellbookFrameTitleText")
+    if ParentBook.backdrop then RestoreChildSuppressed(ParentBook.backdrop, "ParentBookBackdrop") end
+end
+
+local function SuppressNativeSpellContent()
+    local inCombat = InCombatLockdown and InCombatLockdown()
+    SuppressNativeShell()
+    if AscensionSpellbookFrameContentSpells then
+        AscensionSpellbookFrameContentSpells:SetAlpha(0)
+        if not inCombat then AscensionSpellbookFrameContentSpells:EnableMouse(false) end
+    end
+    for i = 1, 12 do
+        local button = _G["SpellButton" .. i]
+        if button then button:SetAlpha(0) end
     end
 end
 
 local function RestoreNativeSpellContent()
-    if InCombatLockdown and InCombatLockdown() then
-        Frame.pendingNativeRestore = true
-        return
-    end
-    Frame.pendingNativeRestore = nil
+    if InCombatLockdown and InCombatLockdown() then return end
+    RestoreNativeShell()
     if AscensionSpellbookFrameContentSpells then
-        AscensionSpellbookFrameContentSpells:Show()
+        AscensionSpellbookFrameContentSpells:SetAlpha(1)
         AscensionSpellbookFrameContentSpells:EnableMouse(true)
     end
     for i = 1, 12 do
         local button = _G["SpellButton" .. i]
-        if button then button:Show() end
+        if button then button:SetAlpha(1) end
     end
 end
 
 local function Activate()
-    if not ParentBook:IsShown() then return end
     if not IsSpellContentActive() then
-        Frame:Hide()
-        SetNativeShellVisible(true)
+        Frame:SetAlpha(0)
         RestoreNativeSpellContent()
         return
     end
-
-    SetNativeShellVisible(false)
-    Frame:ClearAllPoints()
-    Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
-    Frame:Show()
+    Frame:SetAlpha(1)
+    SuppressNativeSpellContent()
     UpdateModeAppearance()
-    Frame:ScheduleRefresh(0.05, false)
-end
-
-local function Deactivate()
-    Frame:Hide()
-    HideCards()
-    SetNativeShellVisible(true)
-    RestoreNativeSpellContent()
+    if not (InCombatLockdown and InCombatLockdown()) then Frame:ScheduleRefresh(0.05, false) end
 end
 
 ParentBook:HookScript("OnShow", function()
+    Frame:Show()
     Activate()
-    Frame:ScheduleRefresh(0.20, false)
 end)
-ParentBook:HookScript("OnHide", Deactivate)
+ParentBook:HookScript("OnHide", function()
+    Frame:Hide()
+    RestoreNativeSpellContent()
+end)
 
 if AscensionSpellbookFrame and AscensionSpellbookFrame.UpdateSpells then
     hooksecurefunc(AscensionSpellbookFrame, "UpdateSpells", function()
-        if ParentBook:IsShown() then
-            Activate()
-        end
+        if ParentBook:IsShown() then Activate() end
     end)
 elseif SpellBookFrame_Update then
     hooksecurefunc("SpellBookFrame_Update", function()
@@ -889,31 +1084,26 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("SPELLS_CHANGED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("UNIT_PET")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("PLAYER_TALENT_UPDATE")
-events:RegisterEvent("CURSOR_UPDATE")
 events:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_PET" and unit ~= "player" then return end
-
-    if event == "CURSOR_UPDATE" then
-        local cursorType = GetCursorInfo and GetCursorInfo()
-        if cursorType ~= "spell" and cursorType ~= "petaction" then
-            Frame.dragInProgress = nil
-            Frame.dragCard = nil
-            if Frame:IsShown() then Frame:ScheduleRefresh(0.05, false) end
-        elseif Frame.dragCard and Frame.dragCard.info then
-            Frame.dragCard.icon:SetTexture(Frame.dragCard.info.icon or QUESTION_MARK)
-            Frame.dragCard.icon:Show()
-        end
+    if event == "PLAYER_REGEN_DISABLED" then
+        SetCombatControlsLocked(true)
         return
     end
-
     if event == "PLAYER_REGEN_ENABLED" then
-        if Frame.pendingNativeRestore then RestoreNativeSpellContent() end
-        if ParentBook:IsShown() then Activate() end
+        SetCombatControlsLocked(false)
+        SuppressNativeSpellContent()
+        if Frame.pendingRefresh or ParentBook:IsShown() then Frame:Refresh() end
+        return
     end
-
-    if Frame:IsShown() then Frame:ScheduleRefresh(0.10, false) end
+    if InCombatLockdown and InCombatLockdown() then
+        Frame.pendingRefresh = true
+        return
+    end
+    if ParentBook:IsShown() then Frame:ScheduleRefresh(0.10, false) end
 end)
 
 SLASH_MODERNSPELLBOOKREBUILT1 = "/msb"
@@ -923,6 +1113,10 @@ SlashCmdList.MODERNSPELLBOOKREBUILT = function(message)
         Frame:Refresh()
         print("Modern Spellbook: refreshed.")
     elseif message == "reset" then
+        if InCombatLockdown and InCombatLockdown() then
+            print("Modern Spellbook: reset is available after combat.")
+            return
+        end
         DB.showPassives = true
         DB.showAllRanks = false
         DB.mode = "player"
@@ -943,3 +1137,6 @@ SlashCmdList.MODERNSPELLBOOKREBUILT = function(message)
 end
 
 UpdateModeAppearance()
+SetCombatControlsLocked(InCombatLockdown and InCombatLockdown())
+SuppressNativeSpellContent()
+Frame:Refresh()
