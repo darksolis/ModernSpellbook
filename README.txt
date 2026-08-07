@@ -1,5 +1,5 @@
 MODERN SPELLBOOK BUILT BY DARKSOLIS
-Version 2.4.6-CoA
+Version 2.4.7-CoA
 
 SECURE COMBAT PAGE EDITION
 
@@ -26,15 +26,20 @@ INSTALL
 - Mouse-wheel page switching restored and routed through the secure Previous/Next page controls.
 
 
-2.4.6 MOUSE-WHEEL FIX
+2.4.7 MOUSE-WHEEL FIX
 - Removed insecure programmatic :Click() calls on secure page buttons.
 - Mouse wheel now uses direct secure override bindings to the named Previous/Next buttons.
 - Fixes SecureHandlers.lua: Invalid access of managed environments table.
 
 
-2.4.6 FIX
+2.4.7 FIX
 - Removed global mouse-wheel override bindings that stole camera zoom.
 - Mouse-wheel paging now activates only while the cursor is over the spellbook.
 - Secure footer buttons remain available for page changes during combat.
 
 - Custom spellbook frame is now parented to UIParent so native protected frame visibility changes cannot hide it during combat.
+
+
+2.4.7 COMBAT VISIBILITY FIX
+- Defers native spellbook OnHide handling briefly to distinguish a real user close from Ascension hiding its protected shell as combat begins.
+- Keeps the UIParent-hosted Modern Spellbook visible through that combat transition.

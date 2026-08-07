@@ -2,7 +2,7 @@
 -- Fresh implementation for WoW 3.3.5a / Ascension CoA.
 
 local ADDON_NAME = "ModernSpellBook"
-local VERSION = "2.4.6-CoA-DarkSolis-SecurePages"
+local VERSION = "2.4.7-CoA-DarkSolis-SecurePages"
 local BOOK_SPELL = BOOKTYPE_SPELL or "spell"
 local BOOK_PET = BOOKTYPE_PET or "pet"
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -119,7 +119,7 @@ local title = Frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("LEFT", header, "LEFT", 18, 0)
 title:SetPoint("RIGHT", header, "RIGHT", -18, 0)
 title:SetJustifyH("LEFT")
-title:SetText("Modern Spellbook Built by DarkSolis - Version 2.4.6")
+title:SetText("Modern Spellbook Built by DarkSolis - Version 2.4.7")
 title:SetTextColor(0.97, 0.98, 1)
 
 local function StyleButton(button)
@@ -1069,21 +1069,45 @@ local function Activate()
 end
 
 ParentBook:HookScript("OnShow", function()
+    Frame.nativeHideSerial = (Frame.nativeHideSerial or 0) + 1
     AnchorToParentBook()
     Frame:Show()
     Activate()
 end)
 ParentBook:HookScript("OnHide", function()
-    -- Ascension may transiently hide its protected spellbook shell when combat
-    -- begins. The rebuilt book is intentionally independent and must remain
-    -- visible in that case. Outside combat, a real close still hides it.
-    if InCombatLockdown and InCombatLockdown() then
-        Frame.keepVisibleThroughCombat = Frame:IsShown()
-        return
-    end
-    Frame.keepVisibleThroughCombat = nil
-    Frame:Hide()
-    RestoreNativeSpellContent()
+    -- Ascension can hide its protected spellbook a fraction of a second before
+    -- combat lockdown becomes visible to Lua. Do not immediately treat that as
+    -- a manual close or the rebuilt book disappears right as combat begins.
+    local wasCustomBookOpen = Frame:IsShown()
+    Frame.nativeHideSerial = (Frame.nativeHideSerial or 0) + 1
+    local serial = Frame.nativeHideSerial
+
+    local delay = CreateFrame("Frame")
+    delay.remaining = 0.08
+    delay:SetScript("OnUpdate", function(self, elapsed)
+        self.remaining = self.remaining - elapsed
+        if self.remaining > 0 then return end
+        self:SetScript("OnUpdate", nil)
+
+        -- A new native show/hide cycle superseded this decision.
+        if serial ~= Frame.nativeHideSerial then return end
+
+        if InCombatLockdown and InCombatLockdown() then
+            if wasCustomBookOpen then
+                Frame.keepVisibleThroughCombat = true
+                -- Do not call Show() here. Keeping an already-visible UIParent
+                -- child visible avoids protected visibility churn in combat.
+            end
+            return
+        end
+
+        -- If Ascension reopened itself during the delay, keep our book alive.
+        if ParentBook:IsShown() then return end
+
+        Frame.keepVisibleThroughCombat = nil
+        Frame:Hide()
+        RestoreNativeSpellContent()
+    end)
 end)
 
 if AscensionSpellbookFrame and AscensionSpellbookFrame.UpdateSpells then
@@ -1107,10 +1131,10 @@ events:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_PET" and unit ~= "player" then return end
     if event == "PLAYER_REGEN_DISABLED" then
         SetCombatControlsLocked(true)
-        if Frame:IsShown() or ParentBook:IsShown() then
+        if Frame:IsShown() or ParentBook:IsShown() or Frame.keepVisibleThroughCombat then
             Frame.keepVisibleThroughCombat = true
             AnchorToParentBook()
-            Frame:Show()
+            if not Frame:IsShown() then Frame:Show() end
         end
         return
     end
