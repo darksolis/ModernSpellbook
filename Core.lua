@@ -2,7 +2,7 @@
 -- Fresh implementation for WoW 3.3.5a / Ascension CoA.
 
 local ADDON_NAME = "ModernSpellBook"
-local VERSION = "2.4.7-CoA-DarkSolis-SecurePages"
+local VERSION = "2.5.1-CoA-DarkSolis-SecurePages"
 local BOOK_SPELL = BOOKTYPE_SPELL or "spell"
 local BOOK_PET = BOOKTYPE_PET or "pet"
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -77,6 +77,11 @@ local function SpellLink(info)
     return info.name
 end
 
+-- Forward declarations for native-shell helpers used by controls created above
+-- their implementations. Keeping these local prevents accidental global lookup.
+local SuppressNativeSpellContent
+local RestoreNativeSpellContent
+
 local Frame = CreateFrame("Frame", "ModernSpellBookRebuiltFrame", UIParent)
 Frame:SetFrameStrata("HIGH")
 Frame:SetFrameLevel(120)
@@ -85,6 +90,10 @@ Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
 
 local function AnchorToParentBook()
     if not ParentBook then return end
+    -- The custom frame contains secure action buttons and is therefore protected.
+    -- Never move it during combat; doing so triggers blocked ClearAllPoints/SetPoint
+    -- calls and can leave the entire book in an invalid visibility state.
+    if InCombatLockdown and InCombatLockdown() then return end
     Frame:ClearAllPoints()
     Frame:SetPoint("TOPLEFT", ParentBook, "TOPLEFT", 28, -54)
 end
@@ -104,6 +113,7 @@ Frame.nativeAlpha = nil
 Frame.nativeMouseEnabled = nil
 Frame.nativeRegionStates = {}
 Frame.nativeChildStates = {}
+Frame.customOpen = false
 
 local header = CreateSolid(Frame, "BACKGROUND", 0, 0.035, 0.04, 0.065, 1)
 header:SetPoint("TOPLEFT", Frame, "TOPLEFT", 5, -5)
@@ -119,7 +129,7 @@ local title = Frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("LEFT", header, "LEFT", 18, 0)
 title:SetPoint("RIGHT", header, "RIGHT", -18, 0)
 title:SetJustifyH("LEFT")
-title:SetText("Modern Spellbook Built by DarkSolis - Version 2.4.7")
+title:SetText("Modern Spellbook Built by DarkSolis - Version 2.5.1")
 title:SetTextColor(0.97, 0.98, 1)
 
 local function StyleButton(button)
@@ -265,19 +275,37 @@ pageText:SetPoint("BOTTOM", Frame, "BOTTOM", 0, 31)
 pageText:SetText("Page 1 of 1")
 pageText:SetTextColor(0.94, 0.96, 1)
 
-local closeButton = CreateFrame("Button", nil, Frame)
+local closeButton = CreateFrame("Button", "ModernSpellBookSecureCloseButton", Frame, "SecureHandlerClickTemplate")
 closeButton:SetSize(30, 30)
 closeButton:SetPoint("TOPRIGHT", Frame, "TOPRIGHT", -10, -10)
 closeButton:SetText("X")
 closeButton:SetNormalFontObject("GameFontNormalLarge")
 StyleButton(closeButton)
 closeButton:SetFrameLevel(Frame:GetFrameLevel() + 10)
-closeButton:SetScript("OnClick", function()
-    if InCombatLockdown and InCombatLockdown() then
-        UIErrorsFrame:AddMessage("Modern Spellbook: close the spellbook with the game keybind while in combat.", 1, 0.25, 0.25)
-        return
+
+-- The book contains secure spell buttons, so it is protected in combat.  An
+-- ordinary Lua OnClick cannot safely call Frame:Hide() while fighting.  This
+-- hardware click executes inside the secure handler environment instead.
+closeButton:SetFrameRef("book", Frame)
+closeButton:SetAttribute("_onclick", [[
+    local book = self:GetFrameRef("book")
+    if book then book:Hide() end
+]])
+
+closeButton:HookScript("PostClick", function()
+    Frame.customOpen = false
+    Frame.pendingNativeRestore = true
+
+    -- Native Ascension cleanup is intentionally deferred during combat.  The
+    -- secure click above has already closed the custom book; touching the native
+    -- protected frame here would only create another blocked-action error.
+    if not (InCombatLockdown and InCombatLockdown()) then
+        Frame.pendingNativeRestore = nil
+        if RestoreNativeSpellContent then RestoreNativeSpellContent() end
+        if ParentBook:IsShown() then
+            if HideUIPanel then HideUIPanel(ParentBook) else ParentBook:Hide() end
+        end
     end
-    if HideUIPanel then HideUIPanel(ParentBook) else ParentBook:Hide() end
 end)
 
 local function UpdateModeAppearance()
@@ -1029,7 +1057,7 @@ local function RestoreNativeShell()
     if ParentBook.backdrop then RestoreChildSuppressed(ParentBook.backdrop, "ParentBookBackdrop") end
 end
 
-local function SuppressNativeSpellContent()
+SuppressNativeSpellContent = function()
     local inCombat = InCombatLockdown and InCombatLockdown()
     SuppressNativeShell()
     if AscensionSpellbookFrameContentSpells then
@@ -1042,7 +1070,7 @@ local function SuppressNativeSpellContent()
     end
 end
 
-local function RestoreNativeSpellContent()
+RestoreNativeSpellContent = function()
     if InCombatLockdown and InCombatLockdown() then return end
     RestoreNativeShell()
     if AscensionSpellbookFrameContentSpells then
@@ -1056,6 +1084,12 @@ local function RestoreNativeSpellContent()
 end
 
 local function Activate()
+    -- Ascension fires spellbook updates while combat is beginning and its
+    -- currentContent can be temporarily unset or changed. Do not react to those
+    -- transient updates. The already-built secure book must stay frozen exactly
+    -- as it was when combat began.
+    if InCombatLockdown and InCombatLockdown() then return end
+
     AnchorToParentBook()
     if not IsSpellContentActive() then
         Frame:SetAlpha(0)
@@ -1065,47 +1099,44 @@ local function Activate()
     Frame:SetAlpha(1)
     SuppressNativeSpellContent()
     UpdateModeAppearance()
-    if not (InCombatLockdown and InCombatLockdown()) then Frame:ScheduleRefresh(0.05, false) end
+    Frame:ScheduleRefresh(0.05, false)
 end
 
 ParentBook:HookScript("OnShow", function()
-    Frame.nativeHideSerial = (Frame.nativeHideSerial or 0) + 1
+    -- Opening the native spellbook is the only signal we need to open the custom
+    -- book. During combat, never reposition or change protected visibility. If the
+    -- custom book was already open, simply leave its secure state untouched.
+    if InCombatLockdown and InCombatLockdown() then
+        return
+    end
+    Frame.customOpen = true
     AnchorToParentBook()
-    Frame:Show()
+    if not Frame:IsShown() then Frame:Show() end
     Activate()
 end)
-ParentBook:HookScript("OnHide", function()
-    -- Ascension can hide its protected spellbook a fraction of a second before
-    -- combat lockdown becomes visible to Lua. Do not immediately treat that as
-    -- a manual close or the rebuilt book disappears right as combat begins.
-    local wasCustomBookOpen = Frame:IsShown()
-    Frame.nativeHideSerial = (Frame.nativeHideSerial or 0) + 1
-    local serial = Frame.nativeHideSerial
 
-    local delay = CreateFrame("Frame")
-    delay.remaining = 0.08
-    delay:SetScript("OnUpdate", function(self, elapsed)
+ParentBook:HookScript("OnHide", function()
+    -- Ascension also hides its native book as combat begins, so do not close the
+    -- secure custom book immediately. Defer the decision long enough to tell a
+    -- real out-of-combat P-key toggle from a combat transition.
+    if not Frame.customOpen then return end
+
+    local timer = CreateFrame("Frame")
+    timer.remaining = 0.30
+    timer:SetScript("OnUpdate", function(self, elapsed)
         self.remaining = self.remaining - elapsed
         if self.remaining > 0 then return end
         self:SetScript("OnUpdate", nil)
 
-        -- A new native show/hide cycle superseded this decision.
-        if serial ~= Frame.nativeHideSerial then return end
+        -- Combat transition: Ascension hid itself, but Modern Spellbook must stay.
+        if InCombatLockdown and InCombatLockdown() then return end
 
-        if InCombatLockdown and InCombatLockdown() then
-            if wasCustomBookOpen then
-                Frame.keepVisibleThroughCombat = true
-                -- Do not call Show() here. Keeping an already-visible UIParent
-                -- child visible avoids protected visibility churn in combat.
-            end
-            return
-        end
-
-        -- If Ascension reopened itself during the delay, keep our book alive.
+        -- If the native book reopened during the delay, this was not a close.
         if ParentBook:IsShown() then return end
 
-        Frame.keepVisibleThroughCombat = nil
-        Frame:Hide()
+        -- Genuine out-of-combat toggle close (for example pressing P again).
+        Frame.customOpen = false
+        if Frame:IsShown() then Frame:Hide() end
         RestoreNativeSpellContent()
     end)
 end)
@@ -1131,25 +1162,24 @@ events:SetScript("OnEvent", function(_, event, unit)
     if event == "UNIT_PET" and unit ~= "player" then return end
     if event == "PLAYER_REGEN_DISABLED" then
         SetCombatControlsLocked(true)
-        if Frame:IsShown() or ParentBook:IsShown() or Frame.keepVisibleThroughCombat then
-            Frame.keepVisibleThroughCombat = true
-            AnchorToParentBook()
-            if not Frame:IsShown() then Frame:Show() end
-        end
+        -- Freeze the secure book exactly as-is for combat. No Show/Hide, alpha,
+        -- anchoring, page rebuilding, or native-shell decisions are allowed here.
         return
     end
     if event == "PLAYER_REGEN_ENABLED" then
         SetCombatControlsLocked(false)
-        if ParentBook:IsShown() or Frame.keepVisibleThroughCombat then
+        if Frame.customOpen then
             AnchorToParentBook()
-            Frame:Show()
             SuppressNativeSpellContent()
+            if Frame.pendingRefresh then Frame:Refresh() end
         else
-            Frame:Hide()
-            RestoreNativeSpellContent()
+            -- A secure close may have happened during combat.  Finish restoring
+            -- Ascension's native shell now that protected changes are legal.
+            if Frame.pendingNativeRestore then
+                Frame.pendingNativeRestore = nil
+                RestoreNativeSpellContent()
+            end
         end
-        Frame.keepVisibleThroughCombat = nil
-        if Frame.pendingRefresh or ParentBook:IsShown() then Frame:Refresh() end
         return
     end
     if InCombatLockdown and InCombatLockdown() then
@@ -1197,9 +1227,11 @@ SetCombatControlsLocked(InCombatLockdown and InCombatLockdown())
 -- spellbook; doing it during file load made the rebuilt window appear on login.
 Frame:Refresh()
 if ParentBook:IsShown() and IsSpellContentActive() then
+    Frame.customOpen = true
     AnchorToParentBook()
     Frame:Show()
     SuppressNativeSpellContent()
 else
+    Frame.customOpen = false
     Frame:Hide()
 end

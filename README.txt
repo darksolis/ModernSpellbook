@@ -1,5 +1,5 @@
 MODERN SPELLBOOK BUILT BY DARKSOLIS
-Version 2.4.7-CoA
+Version 2.5.1-CoA
 
 SECURE COMBAT PAGE EDITION
 
@@ -26,13 +26,13 @@ INSTALL
 - Mouse-wheel page switching restored and routed through the secure Previous/Next page controls.
 
 
-2.4.7 MOUSE-WHEEL FIX
+2.5.1 MOUSE-WHEEL FIX
 - Removed insecure programmatic :Click() calls on secure page buttons.
 - Mouse wheel now uses direct secure override bindings to the named Previous/Next buttons.
 - Fixes SecureHandlers.lua: Invalid access of managed environments table.
 
 
-2.4.7 FIX
+2.5.1 FIX
 - Removed global mouse-wheel override bindings that stole camera zoom.
 - Mouse-wheel paging now activates only while the cursor is over the spellbook.
 - Secure footer buttons remain available for page changes during combat.
@@ -40,6 +40,31 @@ INSTALL
 - Custom spellbook frame is now parented to UIParent so native protected frame visibility changes cannot hide it during combat.
 
 
-2.4.7 COMBAT VISIBILITY FIX
+2.5.1 COMBAT VISIBILITY FIX
 - Defers native spellbook OnHide handling briefly to distinguish a real user close from Ascension hiding its protected shell as combat begins.
 - Keeps the UIParent-hosted Modern Spellbook visible through that combat transition.
+
+
+2.5.1 COMBAT VISIBILITY
+- Native Ascension OnHide no longer closes Modern Spellbook.
+- Once opened, the secure custom frame remains shown through combat transitions.
+- Custom visibility is owned by Modern Spellbook instead of the native protected frame.
+
+
+2.5.1 COMBAT VISIBILITY FIX
+- Never reanchors the protected custom book during combat.
+- Ignores transient Ascension UpdateSpells/currentContent changes during combat.
+- Prevents combat-time alpha changes that could make the secure book disappear.
+- Leaves the already-built secure page tree frozen for the duration of combat.
+
+
+2.5.1 COMBAT CLOSE FIX
+- Secure X button can hide the protected Modern Spellbook during combat.
+- Native Ascension shell restoration is deferred until combat ends.
+- Fixed RestoreNativeSpellContent lexical scope regression.
+- No combat-time repositioning or insecure Hide() call is used for the custom book.
+
+
+2.5.1
+- Restored normal spellbook key toggle closing out of combat.
+- Native combat-driven OnHide events are still ignored so the secure custom book remains visible in combat.
